@@ -76,6 +76,8 @@ let player, ball, walls, score, balls, lives, combo, round, wallsBroken, gameSta
  let wallSpeedMult = 1, wallSpeedTimer = 0, fogTimer = 0, paused = false; 
  let drops = [];
 let trail = [];
+let particles = [];
+let shakeTime = 0, shakeIntensity = 0;
 
 const COLS = 6;
 function colWidth() { return W / COLS; }
@@ -96,7 +98,13 @@ function initGame() {
   playerSpeedMult = 1;
   gameStarted = false;
   gameOver = false;
-  wallSpeedMult = 1; wallSpeedTimer = 0; fogTimer = 0; paused = false;   drops = [];
+  wallSpeedMult = 1; 
+  wallSpeedTimer = 0; 
+  fogTimer = 0; 
+  paused = false;   
+  drops = [];
+  particles = [];
+  shakeTime = 0;
   document.getElementById('pauseOverlay').style.display = 'none';
   document.getElementById('gameOverMsg').style.display = 'none';
   document.getElementById('startMsg').style.display = 'flex';
@@ -369,11 +377,12 @@ function update() {
     const spd = (0.4 + round * 0.15 + Math.min(wallsBroken, 50) * 0.03) * speedMult * wallSpeedMult;
     for (let i = walls.length - 1; i >= 0; i--) {
       walls[i].y += spd;
-    if (walls[i].y > player.y - 10) {
+   if (walls[i].y > player.y - 10) {
         walls.splice(i, 1);
         lives--;
         resetCombo();
         sndLose();
+        shake(20, 10);
         updateHUD();
         if (lives <= 0) { endGame(); return; }
         continue;
@@ -401,6 +410,13 @@ function update() {
     }
     if (d.y > H + 20) drops.splice(i, 1);
   }
+ // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.2; p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+  if (shakeTime > 0) shakeTime--;
   checkRound();
   updateHUD();
 }
@@ -430,6 +446,21 @@ function applyRedBonus(eff) {
     case 'loseBall': balls = Math.max(1, balls-1); updateHUD(); showRoundMsg('💔 -1 to\'p'); break;
     case 'allConcrete': walls.forEach(w => { if (w !== walls[walls.length-1] && w.type==='brick') { w.type='concrete'; w.hp=2; w.maxHp=2; } }); showRoundMsg('⚠️ Hammasi betonga'); break;
   }
+}
+ function spawnParticles(x, y, color, count=10) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random()-0.5)*6,
+      vy: (Math.random()-0.5)*6 - 2,
+      life: 30 + Math.random()*20,
+      color
+    });
+  }
+}
+function shake(time, intensity) {
+  shakeTime = time;
+  shakeIntensity = intensity;
 }
 function handleWallHit(w, idx) {
   const lvl = comboLevel();
@@ -485,7 +516,14 @@ function handleWallHit(w, idx) {
       destroyed = true;
   }
 
- if (destroyed) {
+if (destroyed) {
+    let pColor = '#c0392b';
+    if (w.type === 'concrete' || w.type.startsWith('spikeConcrete')) pColor = '#7f8c8d';
+    else if (w.type === 'ice') pColor = '#85c1e9';
+    else if (w.type === 'explosive') pColor = '#e67e22';
+    else if (w.type === 'diamond') pColor = '#9b59b6';
+    spawnParticles(w.x + w.w/2, w.y + w.h/2, pColor, w.type==='explosive'?20:10);
+    if (w.type === 'explosive') shake(15, 8);
     if (w.type === 'concrete' || w.type.startsWith('spikeConcrete')) sndBreakConcrete();
     else if (w.type === 'ice') sndBreakIce();
     else if (w.type.startsWith('spike')) sndBreakSpike();
@@ -554,7 +592,9 @@ function drawBall() {
     ctx.arc(t.x, t.y, ball.r * ballScale * (0.5 + i/trail.length*0.5), 0, Math.PI*2);
     ctx.fill();
   });
-  ctx.fillStyle = '#fff';
+  const lvl = comboLevel();
+  const ballColors = ['#fff','#fff','#a8e6ff','#ffd6a8','#ffb3b3','#ff7a3d'];
+  ctx.fillStyle = ballColors[lvl] || '#fff';
   ctx.beginPath();
   ctx.arc(ball.x, ball.y, ball.r * ballScale, 0, Math.PI*2);
   ctx.fill();
@@ -661,7 +701,21 @@ function drawDrops() {
     ctx.fillText(d.type === 'green' ? '🎁' : '⚠️', d.x, d.y + 5);
   });
 }
+ function drawParticles() {
+  particles.forEach(p => {
+    ctx.globalAlpha = Math.max(0, p.life/40);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x-2, p.y-2, 4, 4);
+  });
+  ctx.globalAlpha = 1;
+}
 function draw() {
+  ctx.save();
+  if (shakeTime > 0) {
+    const dx = (Math.random()-0.5) * shakeIntensity;
+    const dy = (Math.random()-0.5) * shakeIntensity;
+    ctx.translate(dx, dy);
+  }
   ctx.fillStyle = '#0d1117';
   ctx.fillRect(0, 0, W, H);
 
@@ -675,8 +729,9 @@ function draw() {
     ctx.stroke();
   }
 
- drawWalls();
+  drawWalls();
   drawDrops();
+  drawParticles();
   drawPlayer();
   drawBall();
 
@@ -684,10 +739,11 @@ function draw() {
     ctx.fillStyle = 'rgba(133,193,233,0.12)';
     ctx.fillRect(0,0,W,H);
   }
-  if (fogTimer > 0) {
+if (fogTimer > 0) {
     ctx.fillStyle = 'rgba(255,255,255,0.18)';
     ctx.fillRect(0,0,W,H);
   }
+  ctx.restore();
 }
 
 document.getElementById('pauseBtn').addEventListener('click', () => {
