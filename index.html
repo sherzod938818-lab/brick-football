@@ -73,7 +73,9 @@ window.addEventListener('resize', resize);
 
 // ===== GAME STATE =====
 let player, ball, walls, score, balls, lives, combo, round, wallsBroken, gameStarted, gameOver, freezeTimer, ballScale, speedMult, playerSpeedMult;
- let wallSpeedMult = 1, wallSpeedTimer = 0, fogTimer = 0, paused = false; let drops = [];
+ let wallSpeedMult = 1, wallSpeedTimer = 0, fogTimer = 0, paused = false; 
+ let drops = [];
+let trail = [];
 
 const COLS = 6;
 function colWidth() { return W / COLS; }
@@ -298,7 +300,9 @@ function update() {
   if (freezeTimer > 0) freezeTimer--;
 
   // Ball move
-  if (ball.active) {
+ if (ball.active) {
+    trail.push({x: ball.x, y: ball.y});
+    if (trail.length > 8) trail.shift();
     ball.x += ball.vx;
     ball.y += ball.vy;
 
@@ -528,6 +532,13 @@ function drawPlayer() {
 
 function drawBall() {
   if (!ball.active) return;
+  trail.forEach((t, i) => {
+    const alpha = (i+1) / trail.length * 0.3;
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, ball.r * ballScale * (0.5 + i/trail.length*0.5), 0, Math.PI*2);
+    ctx.fill();
+  });
   ctx.fillStyle = '#fff';
   ctx.beginPath();
   ctx.arc(ball.x, ball.y, ball.r * ballScale, 0, Math.PI*2);
@@ -567,6 +578,21 @@ function drawWalls() {
       ctx.lineTo(w.x+w.w*0.8, w.y+w.h-2);
       ctx.stroke();
     }
+
+   // ikonkalar
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    let icon = '';
+    switch(w.type) {
+      case 'brick': icon = '🧱'; break;
+      case 'concrete': icon = '🪨'; break;
+      case 'ice': icon = '❄️'; break;
+      case 'spikeBrickTop': case 'spikeBrickBottom': icon = '⚠️'; break;
+      case 'spikeConcreteTop': case 'spikeConcreteBottom': icon = '⚠️'; break;
+      case 'explosive': icon = '💥'; break;
+    }
+    if (icon) ctx.fillText(icon, w.x + w.w/2, w.y + w.h/2 + 5);
 
     // spikes
     if (w.type.startsWith('spike')) {
