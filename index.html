@@ -264,7 +264,9 @@ function checkRound() {
   if (idx < thresholds.length && wallsBroken >= thresholds[idx] && round === idx + 1) {
     round++;
     showRoundMsg(`ROUND ${round}` + (round===4?' - MIXLI DEVORLAR':round===5?' - HAMMASI ARALASH':''));
+    walls = walls.filter(w => w.isBoss || w.y < 0);
     spawnBossWall();
+    lastWallSpawn = frame;
   }
 }
 
@@ -340,7 +342,7 @@ function update() {
     // Move walls down
      if (wallSpeedTimer > 0) { wallSpeedTimer--; if (wallSpeedTimer === 0) wallSpeedMult = 1; }
     if (fogTimer > 0) fogTimer--;
-    const spd = (0.3 + round * 0.05) * speedMult * wallSpeedMult;
+    const spd = (0.4 + round * 0.15 + Math.min(wallsBroken, 50) * 0.03) * speedMult * wallSpeedMult;
     for (let i = walls.length - 1; i >= 0; i--) {
       walls[i].y += spd;
       if (walls[i].y > player.y - 10 && !walls[i].isBoss) {
