@@ -14,14 +14,14 @@
   #balls { display: flex; gap: 4px; }
   .ball-icon { font-size: 16px; }
   #combo { position: absolute; top: 36px; left: 14px; color: #f39c12; font-size: 12px; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
-  #startMsg, #roundMsg, #gameOverMsg {
+    #startMsg, #roundMsg, #gameOverMsg {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-    color: #fff; text-align: center; pointer-events: none;
+    color: #fff; text-align: center; pointer-events: none; z-index: 20;
   }
   #startMsg { font-size: 18px; }
   #startMsg .big { font-size: 40px; margin-bottom: 8px; }
   #roundMsg { font-size: 28px; font-weight: bold; opacity: 0; transition: opacity 0.3s; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
-  #gameOverMsg { display: none; background: rgba(0,0,0,0.85); border-radius: 16px; padding: 24px 32px; }
+  #gameOverMsg { display: none; background: rgba(0,0,0,0.85); border-radius: 16px; padding: 24px 32px; z-index: 50; pointer-events: auto; }
   #gameOverMsg h2 { font-size: 28px; margin-bottom: 8px; }
   #gameOverMsg p { font-size: 14px; color: #aaa; margin-bottom: 16px; }
   #gameOverMsg button { background: linear-gradient(135deg,#6c63ff,#3f3d9e); color:#fff; border:none; padding:12px 28px; border-radius:10px; font-size:15px; cursor:pointer; }
@@ -57,8 +57,8 @@ const ctx = canvas.getContext('2d');
 
 let W, H;
 function resize() {
-  W = Math.min(window.innerWidth, 480);
-  H = window.innerHeight;
+  W = Math.min(window.innerWidth, 360);
+  H = Math.min(window.innerHeight, 640);
   canvas.width = W;
   canvas.height = H;
 }
@@ -150,24 +150,26 @@ function spawnNormalWall() {
 
 // ===== INPUT =====
 let pointerActive = false;
+let lastPointerX = 0;
 canvas.addEventListener('pointerdown', (e) => {
   pointerActive = true;
-  handlePointer(e);
+  lastPointerX = e.clientX;
   if (!gameStarted && !gameOver) {
     gameStarted = true;
     document.getElementById('startMsg').style.display = 'none';
     launchBall();
   }
 });
-canvas.addEventListener('pointermove', (e) => { if (pointerActive) handlePointer(e); });
+canvas.addEventListener('pointermove', (e) => {
+  if (!pointerActive) return;
+  const rect = canvas.getBoundingClientRect();
+  const deltaCss = e.clientX - lastPointerX;
+  const delta = deltaCss * (W / rect.width);
+  player.targetX = Math.max(0, Math.min(W - player.w, player.targetX + delta));
+  lastPointerX = e.clientX;
+});
 canvas.addEventListener('pointerup', () => pointerActive = false);
 canvas.addEventListener('pointercancel', () => pointerActive = false);
-
-function handlePointer(e) {
-  const rect = canvas.getBoundingClientRect();
-  const x = (e.clientX - rect.left) * (W / rect.width);
-  player.targetX = Math.max(0, Math.min(W - player.w, x - player.w/2));
-}
 
 function launchBall() {
   ball.active = true;
@@ -285,14 +287,11 @@ function update() {
       const w = walls[i];
       const r = ball.r * ballScale;
       if (ball.x + r > w.x && ball.x - r < w.x + w.w && ball.y + r > w.y && ball.y - r < w.y + w.h) {
-        const result = handleWallHit(w, i);
-        if (result === 'bounce') {
-          // determine bounce direction
-          const fromTop = ball.y < w.y;
-          const fromBottom = ball.y > w.y + w.h;
-          if (fromTop || fromBottom) ball.vy *= -1;
-          else ball.vx *= -1;
-        }
+             const fromTop = ball.y < w.y;
+        const fromBottom = ball.y > w.y + w.h;
+        handleWallHit(w, i);
+        if (fromTop || fromBottom) ball.vy *= -1;
+        else ball.vx *= -1;
         break; // only one collision per frame
       }
     }
@@ -328,7 +327,7 @@ function update() {
     }
 
     // Move walls down
-    const spd = (1 + round * 0.15) * speedMult;
+    const spd = (0.5 + round * 0.075) * speedMult;
     for (let i = walls.length - 1; i >= 0; i--) {
       walls[i].y += spd;
       if (walls[i].y > player.y - 10 && !walls[i].isBoss) {
