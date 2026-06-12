@@ -69,7 +69,7 @@ resize();
 window.addEventListener('resize', resize);
 
 // ===== GAME STATE =====
-let player, ball, walls, score, balls, combo, round, wallsBroken, gameStarted, gameOver, freezeTimer, ballScale, speedMult, playerSpeedMult; let wallSpeedMult = 1, wallSpeedTimer = 0, fogTimer = 0, paused = false;
+let player, ball, walls, score, balls, combo, round, wallsBroken, gameStarted, gameOver, freezeTimer, ballScale, speedMult, playerSpeedMult; let wallSpeedMult = 1, wallSpeedTimer = 0, fogTimer = 0, paused = false; let drops = [];
 
 const COLS = 6;
 function colWidth() { return W / COLS; }
@@ -89,7 +89,7 @@ function initGame() {
   playerSpeedMult = 1;
   gameStarted = false;
   gameOver = false;
-  wallSpeedMult = 1; wallSpeedTimer = 0; fogTimer = 0; paused = false;
+  wallSpeedMult = 1; wallSpeedTimer = 0; fogTimer = 0; paused = false;   drops = [];
   document.getElementById('pauseOverlay').style.display = 'none';
   document.getElementById('gameOverMsg').style.display = 'none';
   document.getElementById('startMsg').style.display = 'flex';
@@ -141,18 +141,20 @@ function randomWallType() {
 
 function spawnNormalWall() {
   let type = randomWallType();
+  let dropType = null;
   const r2 = Math.random();
-  if (r2 < 0.05) type = 'bonusRed';
-  else if (r2 < 0.13) type = 'bonusGreen';
+  if (r2 < 0.05) dropType = 'red';
+  else if (r2 < 0.13) dropType = 'green';
   const wCols = Math.min(COLS, Math.max(1, Math.floor(Math.random()*3)+1)); // 1-3 ustun, max 50% (6 dan 3)
   const startCol = Math.floor(Math.random() * (COLS - wCols + 1));
   const w = wCols * colWidth();
   const x = startCol * colWidth();
   const hp = (type === 'concrete' || type === 'spikeConcreteTop' || type === 'spikeConcreteBottom') ? 2 : 1;
-  walls.push({
+walls.push({
     x, y: -40, w, h: 32,
     type, hp, maxHp: hp,
-    isBoss: false
+    isBoss: false,
+    dropType
   });
 }
 
@@ -327,7 +329,7 @@ function update() {
 
   // Spawn normal walls
   if (!wallsFrozen) {
-     const spawnInterval = Math.max(70, 140 - round*8);
+     const spawnInterval = Math.max(110, 200 - round*8);
     if (frame - lastWallSpawn > spawnInterval) {
       // don't spawn while boss wall present
       const hasBoss = walls.some(w => w.isBoss);
@@ -353,7 +355,24 @@ function update() {
       if (walls[i].y > H + 50) walls.splice(i, 1);
     }
   }
-
+// Drops harakati va ushlash
+  for (let i = drops.length - 1; i >= 0; i--) {
+    const d = drops[i];
+    d.y += d.vy;
+    if (d.y + 14 >= player.y && d.y - 14 <= player.y + player.h &&
+        d.x >= player.x && d.x <= player.x + player.w) {
+      if (d.type === 'green') {
+        const effects = ['ball1','ball3','clearAll','allBrick','noSpike','bigBall','superKick','freezeAll','playerFast'];
+        applyGreenBonus(effects[Math.floor(Math.random()*effects.length)]);
+      } else {
+        const reffects = ['wallsFast','ballSmall','playerSlow','ballSlow','fog','extraConcrete','loseBall','allConcrete'];
+        applyRedBonus(reffects[Math.floor(Math.random()*reffects.length)]);
+      }
+      drops.splice(i, 1);
+      continue;
+    }
+    if (d.y > H + 20) drops.splice(i, 1);
+  }
   checkRound();
   updateHUD();
 }
@@ -427,20 +446,7 @@ function handleWallHit(w, idx) {
         }
       }
       break;
-      case 'bonusGreen': {
-      destroyed = true;
-      const effects = ['ball1','ball3','clearAll','allBrick','noSpike','bigBall','superKick','freezeAll','playerFast'];
-      const eff = effects[Math.floor(Math.random()*effects.length)];
-      applyGreenBonus(eff);
-      break;
-    }
-    case 'bonusRed': {
-      destroyed = true;
-      const reffects = ['wallsFast','ballFlicker','ballSmall','playerSlow','ballSlow','fog','extraConcrete','loseBall','allConcrete'];
-      const reff = reffects[Math.floor(Math.random()*reffects.length)];
-      applyRedBonus(reff);
-      break;
-    }
+    
     case 'diamond':
       destroyed = true;
       if (Math.random() < 0.5) balls += 2;
@@ -451,8 +457,14 @@ function handleWallHit(w, idx) {
       destroyed = true;
   }
 
-  if (destroyed) {
+ if (destroyed) {
     sndBreak();
+    if (w.dropType) {
+      drops.push({
+        x: w.x + w.w/2, y: w.y + w.h/2,
+        type: w.dropType, vy: 7
+      });
+    }
     walls.splice(idx, 1);
     score += 10 * lvl;
     wallsBroken++;
@@ -526,8 +538,7 @@ function drawWalls() {
       case 'spikeConcreteTop': case 'spikeConcreteBottom': color = '#7f8c8d'; break;
       case 'explosive': color = '#e74c3c'; break;
       case 'diamond': color = '#9b59b6'; break;
-      case 'bonusGreen': color = '#27ae60'; break;
-      case 'bonusRed': color = '#c0392b'; break;
+
     }
     ctx.fillStyle = color;
     ctx.fillRect(w.x+1, w.y+1, w.w-2, w.h-2);
@@ -564,14 +575,7 @@ function drawWalls() {
         ctx.fill();
       }
     }
-  if (w.type === 'bonusGreen') {
-      ctx.fillStyle = '#fff'; ctx.font = '18px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('🎁', w.x + w.w/2, w.y + w.h/2 + 6);
-    }
-    if (w.type === 'bonusRed') {
-      ctx.fillStyle = '#fff'; ctx.font = '18px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('⚠️', w.x + w.w/2, w.y + w.h/2 + 6);
-    }
+
     if (w.type === 'diamond') {
       ctx.fillStyle = '#fff';
       ctx.font = '20px sans-serif';
@@ -590,7 +594,18 @@ function drawWalls() {
     ctx.strokeRect(w.x+1, w.y+1, w.w-2, w.h-2);
   });
 }
-
+function drawDrops() {
+  drops.forEach(d => {
+    ctx.fillStyle = d.type === 'green' ? '#27ae60' : '#c0392b';
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, 12, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(d.type === 'green' ? '🎁' : '⚠️', d.x, d.y + 5);
+  });
+}
 function draw() {
   ctx.fillStyle = '#0d1117';
   ctx.fillRect(0, 0, W, H);
@@ -605,7 +620,8 @@ function draw() {
     ctx.stroke();
   }
 
-  drawWalls();
+ drawWalls();
+  drawDrops();
   drawPlayer();
   drawBall();
 
