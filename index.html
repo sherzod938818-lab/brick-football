@@ -30,10 +30,13 @@
 <body>
 <div id="wrap">
   <canvas id="game"></canvas>
-  <div id="hud">
+ 
+ <div id="hud">
     <div id="score">⭐ 0</div>
     <div id="balls"></div>
   </div>
+  <button id="pauseBtn" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.4);color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:16px;z-index:30;">⏸️</button>
+  <div id="pauseOverlay" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:25;display:none;align-items:center;justify-content:center;color:#fff;font-size:24px;">⏸️ Pauza</div>
   <div id="combo"></div>
   <div id="startMsg">
     <div class="big">⚽</div>
@@ -66,7 +69,7 @@ resize();
 window.addEventListener('resize', resize);
 
 // ===== GAME STATE =====
-let player, ball, walls, score, balls, combo, round, wallsBroken, gameStarted, gameOver, freezeTimer, ballScale, speedMult, playerSpeedMult;
+let player, ball, walls, score, balls, combo, round, wallsBroken, gameStarted, gameOver, freezeTimer, ballScale, speedMult, playerSpeedMult; let wallSpeedMult = 1, wallSpeedTimer = 0, fogTimer = 0, paused = false;
 
 const COLS = 6;
 function colWidth() { return W / COLS; }
@@ -86,6 +89,8 @@ function initGame() {
   playerSpeedMult = 1;
   gameStarted = false;
   gameOver = false;
+  wallSpeedMult = 1; wallSpeedTimer = 0; fogTimer = 0; paused = false;
+  document.getElementById('pauseOverlay').style.display = 'none';
   document.getElementById('gameOverMsg').style.display = 'none';
   document.getElementById('startMsg').style.display = 'flex';
   document.getElementById('startMsg').style.flexDirection = 'column';
@@ -135,7 +140,10 @@ function randomWallType() {
 }
 
 function spawnNormalWall() {
-  const type = randomWallType();
+  let type = randomWallType();
+  const r2 = Math.random();
+  if (r2 < 0.05) type = 'bonusRed';
+  else if (r2 < 0.13) type = 'bonusGreen';
   const wCols = Math.min(COLS, Math.max(1, Math.floor(Math.random()*3)+1)); // 1-3 ustun, max 50% (6 dan 3)
   const startCol = Math.floor(Math.random() * (COLS - wCols + 1));
   const w = wCols * colWidth();
@@ -259,6 +267,7 @@ function checkRound() {
 }
 
 function update() {
+  if (paused) return;
   frame++;
   // Player smooth move
   const ps = player.speed * playerSpeedMult;
@@ -318,7 +327,7 @@ function update() {
 
   // Spawn normal walls
   if (!wallsFrozen) {
-    const spawnInterval = Math.max(35, 70 - round*5);
+     const spawnInterval = Math.max(70, 140 - round*8);
     if (frame - lastWallSpawn > spawnInterval) {
       // don't spawn while boss wall present
       const hasBoss = walls.some(w => w.isBoss);
@@ -327,7 +336,9 @@ function update() {
     }
 
     // Move walls down
-     const spd = (0.3 + round * 0.05) * speedMult;
+     if (wallSpeedTimer > 0) { wallSpeedTimer--; if (wallSpeedTimer === 0) wallSpeedMult = 1; }
+    if (fogTimer > 0) fogTimer--;
+    const spd = (0.3 + round * 0.05) * speedMult * wallSpeedMult;
     for (let i = walls.length - 1; i >= 0; i--) {
       walls[i].y += spd;
       if (walls[i].y > player.y - 10 && !walls[i].isBoss) {
@@ -346,7 +357,33 @@ function update() {
   checkRound();
   updateHUD();
 }
-
+function applyGreenBonus(eff) {
+  switch(eff) {
+    case 'ball1': balls += 1; showRoundMsg('+1 ⚽'); break;
+    case 'ball3': balls += 3; showRoundMsg('+3 ⚽'); break;
+    case 'clearAll': walls.length = 0; score += walls.length*5; showRoundMsg('💥 Tozalandi!'); break;
+    case 'allBrick': walls.forEach(w => { if (w !== walls[walls.length-1]) { w.type='brick'; w.hp=1; w.maxHp=1; } }); showRoundMsg('🧱 Hammasi g\'isht!'); break;
+    case 'noSpike': walls.forEach(w => { if (w.type.startsWith('spike')) w.type = w.type.includes('Concrete') ? 'concrete' : 'brick'; }); showRoundMsg('🚫 Mixlar yo\'qoldi'); break;
+    case 'bigBall': ballScale = Math.min(2, ballScale + 0.4); showRoundMsg('⚽ Katta to\'p!'); break;
+    case 'superKick': speedMult = Math.min(2.5, speedMult + 0.5); showRoundMsg('⚡ Super zarba!'); break;
+    case 'freezeAll': freezeTimer = 120; showRoundMsg('❄️ Devorlar muzladi'); break;
+    case 'playerFast': playerSpeedMult = 1.6; setTimeout(()=>playerSpeedMult=1, 6000); showRoundMsg('🏃 Tezlik oshdi!'); break;
+  }
+  score += 20;
+}
+function applyRedBonus(eff) {
+  switch(eff) {
+    case 'wallsFast': wallSpeedMult = 1.6; wallSpeedTimer = 200; showRoundMsg('⚠️ Devorlar tezlashdi'); break;
+    case 'ballFlicker': showRoundMsg('⚠️ To\'p miltillaydi'); break;
+    case 'ballSmall': ballScale = Math.max(0.5, ballScale - 0.3); showRoundMsg('⚠️ To\'p kichrayadi'); break;
+    case 'playerSlow': playerSpeedMult = 0.5; setTimeout(()=>playerSpeedMult=1, 4000); showRoundMsg('⚠️ Sekinlik!'); break;
+    case 'ballSlow': speedMult = Math.max(0.5, speedMult - 0.3); setTimeout(()=>speedMult=Math.min(2.5,speedMult+0.3), 4000); showRoundMsg('⚠️ To\'p sekinlashdi'); break;
+    case 'fog': fogTimer = 180; showRoundMsg('🌫️ Tuman!'); break;
+    case 'extraConcrete': for(let i=0;i<2;i++) spawnNormalWall(); showRoundMsg('⚠️ Qo\'shimcha devorlar'); break;
+    case 'loseBall': balls = Math.max(1, balls-1); updateHUD(); showRoundMsg('💔 -1 to\'p'); break;
+    case 'allConcrete': walls.forEach(w => { if (w !== walls[walls.length-1] && w.type==='brick') { w.type='concrete'; w.hp=2; w.maxHp=2; } }); showRoundMsg('⚠️ Hammasi betonga'); break;
+  }
+}
 function handleWallHit(w, idx) {
   const lvl = comboLevel();
   let destroyed = false;
@@ -390,6 +427,20 @@ function handleWallHit(w, idx) {
         }
       }
       break;
+      case 'bonusGreen': {
+      destroyed = true;
+      const effects = ['ball1','ball3','clearAll','allBrick','noSpike','bigBall','superKick','freezeAll','playerFast'];
+      const eff = effects[Math.floor(Math.random()*effects.length)];
+      applyGreenBonus(eff);
+      break;
+    }
+    case 'bonusRed': {
+      destroyed = true;
+      const reffects = ['wallsFast','ballFlicker','ballSmall','playerSlow','ballSlow','fog','extraConcrete','loseBall','allConcrete'];
+      const reff = reffects[Math.floor(Math.random()*reffects.length)];
+      applyRedBonus(reff);
+      break;
+    }
     case 'diamond':
       destroyed = true;
       if (Math.random() < 0.5) balls += 2;
@@ -475,6 +526,8 @@ function drawWalls() {
       case 'spikeConcreteTop': case 'spikeConcreteBottom': color = '#7f8c8d'; break;
       case 'explosive': color = '#e74c3c'; break;
       case 'diamond': color = '#9b59b6'; break;
+      case 'bonusGreen': color = '#27ae60'; break;
+      case 'bonusRed': color = '#c0392b'; break;
     }
     ctx.fillStyle = color;
     ctx.fillRect(w.x+1, w.y+1, w.w-2, w.h-2);
@@ -511,7 +564,14 @@ function drawWalls() {
         ctx.fill();
       }
     }
-
+  if (w.type === 'bonusGreen') {
+      ctx.fillStyle = '#fff'; ctx.font = '18px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('🎁', w.x + w.w/2, w.y + w.h/2 + 6);
+    }
+    if (w.type === 'bonusRed') {
+      ctx.fillStyle = '#fff'; ctx.font = '18px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('⚠️', w.x + w.w/2, w.y + w.h/2 + 6);
+    }
     if (w.type === 'diamond') {
       ctx.fillStyle = '#fff';
       ctx.font = '20px sans-serif';
@@ -553,7 +613,18 @@ function draw() {
     ctx.fillStyle = 'rgba(133,193,233,0.12)';
     ctx.fillRect(0,0,W,H);
   }
+  if (fogTimer > 0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(0,0,W,H);
+  }
 }
+
+document.getElementById('pauseBtn').addEventListener('click', () => {
+  if (!gameStarted || gameOver) return;
+  paused = !paused;
+  document.getElementById('pauseOverlay').style.display = paused ? 'flex' : 'none';
+  document.getElementById('pauseBtn').textContent = paused ? '▶️' : '⏸️';
+});
 
 function loop() {
   update();
